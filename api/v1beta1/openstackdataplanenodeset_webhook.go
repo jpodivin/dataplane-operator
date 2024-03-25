@@ -117,16 +117,11 @@ func (r *OpenStackDataPlaneNodeSet) ValidateCreate() (admission.Warnings, error)
 
 	var errors field.ErrorList
 
-	nodeSetList := &OpenStackDataPlaneNodeSetList{}
-	opts := &client.ListOptions{
-		Namespace: r.ObjectMeta.Namespace,
-	}
-
-	err := webhookClient.List(context.TODO(), nodeSetList, opts)
+	nodeSetList, err := GetNodeSets(r)
 	if err != nil {
-		return nil, err
+		return nil, apierrors.NewInternalError(
+			fmt.Errorf("unable to retrieve list of OpenStackDataPlaneNodeSet objects %w", err))
 	}
-
 	// If this is the first NodeSet being created, then there can be no duplicates
 	// we can exit early here.
 	if len(nodeSetList.Items) == 0 {
@@ -195,6 +190,15 @@ func (r *OpenStackDataPlaneNodeSet) ValidateUpdate(old runtime.Object) (admissio
 				fmt.Sprintf("%s", err)))
 		}
 	}
+	if !reflect.DeepEqual(r.Spec.Nodes, oldNodeSet.Spec.Nodes) {
+		nodeSetList, err := GetNodeSets(r)
+		if err != nil {
+			return nil, apierrors.NewInternalError(
+				fmt.Errorf("unable to retrieve list of OpenStackDataPlaneNodeSet objects %w", err))
+		}
+		errors = append(errors, r.duplicateNodeCheck(nodeSetList)...)
+
+	}
 
 	if errors != nil {
 		return nil, apierrors.NewInvalid(
@@ -213,4 +217,19 @@ func (r *OpenStackDataPlaneNodeSet) ValidateDelete() (admission.Warnings, error)
 
 	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil
+}
+
+// Get list of OpenStackDataPlaneNodeSet objects
+func GetNodeSets(r *OpenStackDataPlaneNodeSet) (*OpenStackDataPlaneNodeSetList, error) {
+	nodeSetList := &OpenStackDataPlaneNodeSetList{}
+
+	opts := &client.ListOptions{
+		Namespace: r.ObjectMeta.Namespace,
+	}
+
+	err := webhookClient.List(context.TODO(), nodeSetList, opts)
+	if err != nil {
+		return nil, err
+	}
+	return nodeSetList, nil
 }
